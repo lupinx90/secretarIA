@@ -16,7 +16,7 @@ CHAT_ID = os.getenv("CHAT_ID", "")
 raw_targets = os.getenv("IP_TARGETS", "127.0.0.1")
 IP_TARGETS = [ip.strip() for ip in raw_targets.split(",") if ip.strip()]
 NAP_THRESHOLD = timedelta(minutes=30)  # Minimum off-line time for a nap
-SLEEP_THRESHOLD = timedelta(hours=6)  # Minimum off-line time for full sleep
+SLEEP_THRESHOLD = timedelta(hours=4)  # Minimum off-line time for full sleep
 
 
 def get_check_interval():
