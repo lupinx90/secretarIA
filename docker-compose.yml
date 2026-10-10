@@ -8,7 +8,7 @@ services:
       - TZ=Europe/Madrid
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
       - CHAT_ID=${CHAT_ID}
-      - MOBILE_IP=${MOBILE_IP}
+      - IP_TARGETS=${IP_TARGETS}
       - CHECK_INTERVAL=${CHECK_INTERVAL}
     volumes:
       - ./data:/app/data  # Guarda la BD en la carpeta ./data de la Raspberry Pi
