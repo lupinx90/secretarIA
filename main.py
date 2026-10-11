@@ -84,7 +84,7 @@ def main():
                 duration = first_seen - last_seen
                 hours, minutes = format_duration(duration)
 
-                if duration < NAP_THRESHOLD:
+                if duration <= NAP_THRESHOLD:
                     send_telegram(f"🤖 Tracker inicializado.")
                 elif duration <= SLEEP_THRESHOLD:
                     send_telegram(" ☀️ Espero que haya sido una buena siesta!")
@@ -104,9 +104,11 @@ def main():
             last_seen = now
 
         elif first_seen is not None:
-            if now - last_seen > NAP_THRESHOLD:
-                send_telegram(f"Desconectado a las {now.strftime('%H:%M')}.")
+            duration = now - last_seen
+            if duration > NAP_THRESHOLD:
+                send_telegram(f"Desconectado a las {last_seen.strftime('%H:%M')}.")
 
+            if duration > SLEEP_THRESHOLD:
                 if last_reported_date != now.date():
                     if last_seen is not None:
                         duration = last_seen - first_seen
