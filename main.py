@@ -16,7 +16,7 @@ CHAT_ID = os.getenv("CHAT_ID", "")
 raw_targets = os.getenv("IP_TARGETS", "127.0.0.1")
 IP_TARGETS = [ip.strip() for ip in raw_targets.split(",") if ip.strip()]
 NAP_THRESHOLD = timedelta(minutes=30)  # Minimum off-line time for a nap
-SLEEP_THRESHOLD = timedelta(hours=6)  # Minimum off-line time for full sleep
+SLEEP_THRESHOLD = timedelta(hours=4)  # Minimum off-line time for full sleep
 
 
 def get_check_interval():
@@ -84,7 +84,7 @@ def main():
                 duration = first_seen - last_seen
                 hours, minutes = format_duration(duration)
 
-                if duration < NAP_THRESHOLD:
+                if duration <= NAP_THRESHOLD:
                     send_telegram(f"🤖 Tracker inicializado.")
                 elif duration <= SLEEP_THRESHOLD:
                     send_telegram(" ☀️ Espero que haya sido una buena siesta!")
@@ -103,21 +103,21 @@ def main():
 
             last_seen = now
 
-        elif first_seen is not None:
-            if now - last_seen > NAP_THRESHOLD:
-                send_telegram(f"Desconectado a las {now.strftime('%H:%M')}.")
+        elif last_seen is datetime:
+            send_telegram(f"Desconectado a las {last_seen.strftime('%H:%M')}.")
 
-                if last_reported_date != now.date():
-                    if last_seen is not None:
-                        duration = last_seen - first_seen
-                        hours, minutes = format_duration(duration)
-                        report = (
-                            f"📊 **Daily Sleep/Awake Report**\n\n"
-                            f"☀️ First Active (Wi-Fi ON): {first_seen.strftime('%H:%M')}\n"
-                            f"🌙 Last Active (Wi-Fi OFF): {last_seen.strftime('%H:%M')}\n"
-                            f"⏱️ Tiempo despierto: {hours}h {minutes}m"
-                        )
-                        send_telegram(report)
+            duration = now - last_seen
+            if duration > SLEEP_THRESHOLD:
+                if last_reported_date != now.date() and first_seen is not None:
+                    duration = last_seen - first_seen
+                    hours, minutes = format_duration(duration)
+                    report = (
+                        f"📊 **Daily Sleep/Awake Report**\n\n"
+                        f"☀️ First Active (Wi-Fi ON): {first_seen.strftime('%H:%M')}\n"
+                        f"🌙 Last Active (Wi-Fi OFF): {last_seen.strftime('%H:%M')}\n"
+                        f"⏱️ Tiempo despierto: {hours}h {minutes}m"
+                    )
+                    send_telegram(report)
 
                     last_reported_date = now.date()
 
