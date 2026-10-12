@@ -24,10 +24,13 @@ def init_db():
     conn.close()
 
 
-def save_sleep_warning(last_seen: datetime, first_seen: datetime):
+def save_sleep_warning(first_seen: datetime, last_seen: datetime):
     """Guarda en la BD solo si el tiempo dormido es menor a 8 horas."""
-    slept = first_seen - last_seen
-    total_seconds = slept.total_seconds()
+    if first_seen > last_seen:
+        first_seen, last_seen = last_seen, first_seen
+
+    sleep_duration = last_seen - first_seen
+    total_seconds = sleep_duration.total_seconds()
 
     # 8 horas = 28800 segundos
     if total_seconds < 28800:
@@ -43,8 +46,8 @@ def save_sleep_warning(last_seen: datetime, first_seen: datetime):
             """,
             (
                 first_seen.strftime("%Y-%m-%d"),
-                last_seen.strftime("%Y-%m-%d %H:%M:%S"),
                 first_seen.strftime("%Y-%m-%d %H:%M:%S"),
+                last_seen.strftime("%Y-%m-%d %H:%M:%S"),
                 hours_span,
                 mins_span,
             ),
@@ -52,11 +55,11 @@ def save_sleep_warning(last_seen: datetime, first_seen: datetime):
         conn.commit()
         conn.close()
         print(
-            f"⚠️ Alerta: Duermes demasiado poco (si persiste, pide ayuda) {hours_span}h (< 8h). Registro guardado en BD.",
+            f"Alerta: Duermes demasiado poco (si persiste, pide ayuda) {hours_span}h (< 8h). Registro guardado en BD.",
             flush=True,
         )
         return True, hours_span
 
     sleep_hours = round(total_seconds / 3600, 2)
-    print(f"✅ Has dormido {sleep_hours}h (>= 8h). No requiere registro.", flush=True)
+    print(f"Has dormido {sleep_hours}h (>= 8h). No requiere registro.", flush=True)
     return False, sleep_hours

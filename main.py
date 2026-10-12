@@ -15,8 +15,10 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 CHAT_ID = os.getenv("CHAT_ID", "")
 raw_targets = os.getenv("IP_TARGETS", "127.0.0.1")
 IP_TARGETS = [ip.strip() for ip in raw_targets.split(",") if ip.strip()]
-NAP_THRESHOLD = timedelta(minutes=30)  # Minimum off-line time for a nap
-SLEEP_THRESHOLD = timedelta(hours=4)  # Minimum off-line time for full sleep
+NAP_THRESHOLD = timedelta(minutes=30)
+SLEEP_THRESHOLD = timedelta(hours=4)
+
+TELEGRAM_SESSION = requests.Session()
 
 
 def get_check_interval():
@@ -34,27 +36,38 @@ CHECK_INTERVAL = get_check_interval()
 
 def send_telegram(message):
     if not TELEGRAM_TOKEN or not CHAT_ID:
-        print(f"[LOG ONLY]: {message}")
+        safe_message = message.encode("ascii", errors="replace").decode("ascii")
+        print(f"[LOG ONLY]: {safe_message}")
         return
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        requests.post(url, data={"chat_id": CHAT_ID, "text": message}, timeout=10)
+        TELEGRAM_SESSION.post(url, data={"chat_id": CHAT_ID, "text": message}, timeout=10)
     except requests.RequestException as err:
         print(f"Error sending Telegram notification: {err}")
 
+
+def ping_ip(ip: str) -> bool:
+    if os.name == "nt":
+        command = ["ping", "-n", "1", "-w", "1000", ip]
+    else:
+        command = ["ping", "-c", "1", "-W", "1", ip]
+
+    try:
+        result = subprocess.run(
+            command,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except OSError:
+        return False
+    return result.returncode == 0
+
+
 def is_phone_online(ip_list: list[str]) -> bool:
     """Returns True if at least one candidate IP responds to a ping."""
-    for ip in ip_list:
-        # Sends 1 ping packet with a 1-second timeout
-        res = subprocess.run(
-            ["ping", "-c", "1", "-W", "1", ip],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-        if res.returncode == 0:
-            return True  # Device found on this interface
-    return False  # Device not reachable on any defined IP
+    return any(ping_ip(ip) for ip in ip_list)
 
 
 def format_duration(delta):
@@ -70,59 +83,61 @@ def main():
     first_seen = None
     last_seen = None
     last_reported_date = None
+    was_online = False
 
     while True:
         now = datetime.now()
+        online = is_phone_online(IP_TARGETS)
 
-        if is_phone_online(IP_TARGETS):
+        if online:
             if first_seen is None:
-                
                 first_seen = now
-                if last_seen is None:
-                    last_seen = now
 
-                duration = first_seen - last_seen
-                hours, minutes = format_duration(duration)
+            if not was_online:
+                send_telegram("🤖 Tracker inicializado.")
+                if last_seen is not None:
+                    offline_duration = now - last_seen
+                    hours, minutes = format_duration(offline_duration)
 
-                if duration <= NAP_THRESHOLD:
-                    send_telegram(f"🤖 Tracker inicializado.")
-                elif duration <= SLEEP_THRESHOLD:
-                    send_telegram(" ☀️ Espero que haya sido una buena siesta!")
-                    send_telegram(f"⏱️ Has descansado: {hours}h {minutes}m")
-                else:
-                    send_telegram(f"☀️ A los buenos días! Despierto a las {now.strftime('%H:%M')}\n")
-                    send_telegram(" 🌙 Espero que hayas pasado una buena noche!")
-                    send_telegram(f"⏱️ Has descansado: {hours}h {minutes}m")
-                    short_dream, hours_slept = save_sleep_warning(last_seen, first_seen)
-                    if short_dream:
-                        message = (
-                            f"⚠️ ¡Atención! Has dormido solo {hours_slept}h. "
-                            "Se ha guardado el registro."
-                        )
-                        send_telegram(message)
+                    if offline_duration <= NAP_THRESHOLD:
+                        send_telegram("🤖 Microcorte detectado.")
+                    elif offline_duration <= SLEEP_THRESHOLD:
+                        send_telegram(" ☀️ Espero que haya sido una buena siesta!")
+                        send_telegram(f"⏱️ Has descansado: {hours}h {minutes}m")
+                    else:
+                        send_telegram(f"☀️ A los buenos días! Despierto a las {now.strftime('%H:%M')}\n")
+                        send_telegram(" 🌙 Espero que hayas pasado una buena noche!")
+                        send_telegram(f"⏱️ Has descansado: {hours}h {minutes}m")
+                        short_dream, hours_slept = save_sleep_warning(first_seen, last_seen)
+                        if short_dream:
+                            message = (
+                                f"⚠️ ¡Atención! Has dormido solo {hours_slept}h. "
+                                "Se ha guardado el registro."
+                            )
+                            send_telegram(message)
+                was_online = True
 
             last_seen = now
+            continue
 
-        elif last_seen is datetime:
+        if was_online and last_seen is not None:
             duration = now - last_seen
-            
+
             if duration > NAP_THRESHOLD:
                 send_telegram(f"Desconectado a las {last_seen.strftime('%H:%M')}.")
-            if duration > SLEEP_THRESHOLD:
-                if last_reported_date != now.date() and first_seen is not None:
-                    duration = last_seen - first_seen
-                    hours, minutes = format_duration(duration)
-                    report = (
-                        f"📊 **Daily Sleep/Awake Report**\n\n"
-                        f"☀️ First Active (Wi-Fi ON): {first_seen.strftime('%H:%M')}\n"
-                        f"🌙 Last Active (Wi-Fi OFF): {last_seen.strftime('%H:%M')}\n"
-                        f"⏱️ Tiempo despierto: {hours}h {minutes}m"
-                    )
-                    send_telegram(report)
+            if duration > SLEEP_THRESHOLD and last_reported_date != now.date() and first_seen is not None:
+                duration = last_seen - first_seen
+                hours, minutes = format_duration(duration)
+                report = (
+                    f"📊 **Daily Sleep/Awake Report**\n\n"
+                    f"☀️ First Active (Wi-Fi ON): {first_seen.strftime('%H:%M')}\n"
+                    f"🌙 Last Active (Wi-Fi OFF): {last_seen.strftime('%H:%M')}\n"
+                    f"⏱️ Tiempo despierto: {hours}h {minutes}m"
+                )
+                send_telegram(report)
+                last_reported_date = now.date()
 
-                    last_reported_date = now.date()
-
-                first_seen = None
+            was_online = False
 
         time.sleep(CHECK_INTERVAL)
 
