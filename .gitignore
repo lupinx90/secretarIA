@@ -1,0 +1,13 @@
+# Sensitive environment variables
+.env
+
+# SQLite Database & Data volumes
+*.db
+data/
+
+# Python runtime artifacts
+__pycache__/
+*.py[cod]
+
+# Docker local data
+*.log
