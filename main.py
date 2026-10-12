@@ -104,9 +104,10 @@ def main():
             last_seen = now
 
         elif last_seen is datetime:
-            send_telegram(f"Desconectado a las {last_seen.strftime('%H:%M')}.")
-
             duration = now - last_seen
+            
+            if duration > NAP_THRESHOLD:
+                send_telegram(f"Desconectado a las {last_seen.strftime('%H:%M')}.")
             if duration > SLEEP_THRESHOLD:
                 if last_reported_date != now.date() and first_seen is not None:
                     duration = last_seen - first_seen
