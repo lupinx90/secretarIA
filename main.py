@@ -108,7 +108,7 @@ def main():
                         send_telegram(f"☀️ A los buenos días! Despierto a las {now.strftime('%H:%M')}\n")
                         send_telegram(" 🌙 Espero que hayas pasado una buena noche!")
                         send_telegram(f"⏱️ Has descansado: {hours}h {minutes}m")
-                        short_dream, hours_slept = save_sleep_warning(first_seen, last_seen)
+                        short_dream, hours_slept = save_sleep_warning(last_seen, now)
                         if short_dream:
                             message = (
                                 f"⚠️ ¡Atención! Has dormido solo {hours_slept}h. "
