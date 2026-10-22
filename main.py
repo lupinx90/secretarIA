@@ -19,6 +19,8 @@ NAP_THRESHOLD = timedelta(minutes=30)
 SLEEP_THRESHOLD = timedelta(hours=4)
 
 TELEGRAM_SESSION = requests.Session()
+PING_RETRIES = 3
+PING_RETRY_DELAY = 1
 
 
 def get_check_interval():
@@ -67,7 +69,13 @@ def ping_ip(ip: str) -> bool:
 
 def is_phone_online(ip_list: list[str]) -> bool:
     """Returns True if at least one candidate IP responds to a ping."""
-    return any(ping_ip(ip) for ip in ip_list)
+    for ip in ip_list:
+        for attempt in range(PING_RETRIES + 1):
+            if ping_ip(ip):
+                return True
+            if attempt < PING_RETRIES:
+                time.sleep(PING_RETRY_DELAY)
+    return False
 
 
 def format_duration(delta):
