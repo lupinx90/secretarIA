@@ -102,11 +102,9 @@ def main():
                 first_seen = now
 
             if not was_online:
-                send_telegram("🤖 Tracker inicializado.")
                 if last_seen is not None:
                     offline_duration = now - last_seen
                     hours, minutes = format_duration(offline_duration)
-
                     if offline_duration <= NAP_THRESHOLD:
                         send_telegram("🤖 Microcorte detectado.")
                     elif offline_duration <= SLEEP_THRESHOLD:
@@ -123,29 +121,31 @@ def main():
                                 "Se ha guardado el registro."
                             )
                             send_telegram(message)
-                was_online = True
+                else:
+                    send_telegram("🤖 Tracker inicializado.")
 
+            was_online = True
             last_seen = now
-            continue
+        else:
+            if was_online and last_seen is not None:
+                duration = now - last_seen
 
-        if was_online and last_seen is not None:
-            duration = now - last_seen
+                if duration > NAP_THRESHOLD:
+                    send_telegram(f"Desconectado a las {last_seen.strftime('%H:%M')}.")
+                if duration > SLEEP_THRESHOLD and last_reported_date != now.date() and first_seen is not None:
+                    duration = last_seen - first_seen
+                    hours, minutes = format_duration(duration)
+                    report = (
+                        f"📊 **Daily Sleep/Awake Report**\n\n"
+                        f"☀️ First Active (Wi-Fi ON): {first_seen.strftime('%H:%M')}\n"
+                        f"🌙 Last Active (Wi-Fi OFF): {last_seen.strftime('%H:%M')}\n"
+                        f"⏱️ Tiempo despierto: {hours}h {minutes}m"
+                    )
+                    send_telegram(report)
+                    last_reported_date = now.date()
+                    first_seen = None
 
-            if duration > NAP_THRESHOLD:
-                send_telegram(f"Desconectado a las {last_seen.strftime('%H:%M')}.")
-            if duration > SLEEP_THRESHOLD and last_reported_date != now.date() and first_seen is not None:
-                duration = last_seen - first_seen
-                hours, minutes = format_duration(duration)
-                report = (
-                    f"📊 **Daily Sleep/Awake Report**\n\n"
-                    f"☀️ First Active (Wi-Fi ON): {first_seen.strftime('%H:%M')}\n"
-                    f"🌙 Last Active (Wi-Fi OFF): {last_seen.strftime('%H:%M')}\n"
-                    f"⏱️ Tiempo despierto: {hours}h {minutes}m"
-                )
-                send_telegram(report)
-                last_reported_date = now.date()
-
-            was_online = False
+                was_online = False
 
         time.sleep(CHECK_INTERVAL)
 
