@@ -2,6 +2,7 @@
 import subprocess
 import time
 from datetime import datetime, timedelta
+from math import ceil
 
 import requests
 
@@ -19,6 +20,7 @@ MANIA_STATUS_API_URL = os.getenv(
     "MANIA_STATUS_API_URL",
     "http://127.0.0.1:8000/api/network-status",
 ).strip()
+MANIA_API_BASE_URL = MANIA_STATUS_API_URL.split("/api/network-status", 1)[0].rstrip("/")
 NAP_THRESHOLD = timedelta(minutes=30)
 SLEEP_THRESHOLD = timedelta(hours=4)
 
@@ -103,6 +105,56 @@ def send_mania_status(targets: list[dict[str, str | bool]]) -> bool:
     return True
 
 
+def send_mania_action(action: str) -> bool:
+    url = f"{MANIA_API_BASE_URL}/api/action/{action}"
+    try:
+        response = HTTP_SESSION.post(url, timeout=MANIA_REQUEST_TIMEOUT)
+        response.raise_for_status()
+    except requests.RequestException as err:
+        print(f"Error sending {action} action to manIA: {err}", flush=True)
+        return False
+
+    print(f"manIA accepted {action} action (HTTP {response.status_code}).", flush=True)
+    return True
+
+
+def send_mania_nap_total(offline_duration: timedelta) -> bool:
+    summary_url = f"{MANIA_API_BASE_URL}/api/sleep-summary"
+    nap_url = f"{MANIA_API_BASE_URL}/api/naps"
+    today = datetime.now().date().isoformat()
+    nap_increment = min(max(ceil(offline_duration.total_seconds() / 3600), 1), 3)
+
+    try:
+        summary_response = HTTP_SESSION.get(summary_url, timeout=MANIA_REQUEST_TIMEOUT)
+        summary_response.raise_for_status()
+        summary = summary_response.json()
+        today_summary = next(
+            (day for day in summary["days"] if day["date"] == today),
+            None,
+        )
+        if today_summary is None:
+            raise ValueError(f"manIA sleep summary does not contain today's date ({today}).")
+
+        current_nap_hours = float(today_summary["nap_hours"])
+        daily_nap_total = min(3, ceil(current_nap_hours) + nap_increment)
+        nap_response = HTTP_SESSION.put(
+            nap_url,
+            json={"hours": daily_nap_total},
+            timeout=MANIA_REQUEST_TIMEOUT,
+        )
+        nap_response.raise_for_status()
+    except (requests.RequestException, KeyError, TypeError, ValueError) as err:
+        print(f"Error updating today's nap total in manIA: {err}", flush=True)
+        return False
+
+    print(
+        f"manIA accepted today's nap total ({daily_nap_total}h, "
+        f"HTTP {nap_response.status_code}).",
+        flush=True,
+    )
+    return True
+
+
 def format_duration(delta):
     total_seconds = max(delta.total_seconds(), 0)
     hours, remainder = divmod(total_seconds, 3600)
@@ -139,10 +191,13 @@ def main():
                     elif offline_duration <= SLEEP_THRESHOLD:
                         send_telegram(" ☀️ Espero que haya sido una buena siesta!")
                         send_telegram(f"⏱️ Has descansado: {hours}h {minutes}m")
+                        send_mania_action("morning")
+                        send_mania_nap_total(offline_duration)
                     else:
                         send_telegram(f"☀️ A los buenos días! Despierto a las {now.strftime('%H:%M')}\n")
                         send_telegram(" 🌙 Espero que hayas pasado una buena noche!")
                         send_telegram(f"⏱️ Has descansado: {hours}h {minutes}m")
+                        send_mania_action("morning")
                         short_dream, hours_slept = save_sleep_warning(last_seen, now)
                         if short_dream:
                             message = (
@@ -163,6 +218,7 @@ def main():
 
                 if not reported_nap and duration > NAP_THRESHOLD:
                     send_telegram(f"Desconectado a las {last_seen.strftime('%H:%M')}.")
+                    send_mania_action("night")
                     reported_nap = True
                 if not reported_sleep and duration > SLEEP_THRESHOLD and last_reported_date != now.date() and first_seen is not None:
                     duration = last_seen - first_seen

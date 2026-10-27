@@ -34,3 +34,13 @@ Después de configurar `.env`, recrea el contenedor:
 ```bash
 docker compose up --build -d
 ```
+
+secretarIA también usa los endpoints de sueño de manIA cuando cambia el estado
+de red: al superar los 30 minutos sin conexión, inicia una sesión de sueño con
+`POST /api/action/night`. Cuando vuelve la conexión, la termina con
+`POST /api/action/morning`. Los intervalos de hasta cuatro horas se suman al
+total diario de siestas mediante `PUT /api/naps`; el intervalo se redondea hacia
+arriba a horas completas y el total diario se limita a tres horas, según las
+opciones admitidas por manIA. Los intervalos más largos se registran como
+sueño. Estas URL se derivan de `MANIA_STATUS_API_URL`, así que configura todos
+los endpoints para el mismo host de manIA.
