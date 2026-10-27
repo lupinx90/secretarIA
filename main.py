@@ -117,6 +117,8 @@ def main():
     last_seen = None
     last_reported_date = None
     was_online = False
+    reported_nap = False
+    reported_sleep = False
 
     while True:
         now = datetime.now()
@@ -148,6 +150,8 @@ def main():
                                 "Se ha guardado el registro."
                             )
                             send_telegram(message)
+                    reported_nap = False
+                    reported_sleep = False
                 else:
                     send_telegram("🤖 Tracker inicializado.")
 
@@ -157,9 +161,10 @@ def main():
             if not was_online and last_seen is not None:
                 duration = now - last_seen
 
-                if duration > NAP_THRESHOLD:
+                if not reported_nap and duration > NAP_THRESHOLD:
                     send_telegram(f"Desconectado a las {last_seen.strftime('%H:%M')}.")
-                if duration > SLEEP_THRESHOLD and last_reported_date != now.date() and first_seen is not None:
+                    reported_nap = True
+                if not reported_sleep and duration > SLEEP_THRESHOLD and last_reported_date != now.date() and first_seen is not None:
                     duration = last_seen - first_seen
                     hours, minutes = format_duration(duration)
                     report = (
@@ -171,6 +176,7 @@ def main():
                     send_telegram(report)
                     last_reported_date = now.date()
                     first_seen = None
+                    reported_sleep = True
             was_online = False
 
         time.sleep(CHECK_INTERVAL)
