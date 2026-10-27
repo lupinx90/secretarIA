@@ -15,12 +15,17 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 CHAT_ID = os.getenv("CHAT_ID", "")
 raw_targets = os.getenv("IP_TARGETS", "127.0.0.1")
 IP_TARGETS = [ip.strip() for ip in raw_targets.split(",") if ip.strip()]
+MANIA_STATUS_API_URL = os.getenv(
+    "MANIA_STATUS_API_URL",
+    "http://127.0.0.1:8000/api/network-status",
+).strip()
 NAP_THRESHOLD = timedelta(minutes=30)
 SLEEP_THRESHOLD = timedelta(hours=4)
 
-TELEGRAM_SESSION = requests.Session()
+HTTP_SESSION = requests.Session()
 PING_RETRIES = 3
 PING_RETRY_DELAY = 1
+MANIA_REQUEST_TIMEOUT = 10
 
 
 def get_check_interval():
@@ -44,7 +49,7 @@ def send_telegram(message):
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        TELEGRAM_SESSION.post(url, data={"chat_id": CHAT_ID, "text": message}, timeout=10)
+        HTTP_SESSION.post(url, data={"chat_id": CHAT_ID, "text": message}, timeout=10)
     except requests.RequestException as err:
         print(f"Error sending Telegram notification: {err}")
 
@@ -67,15 +72,35 @@ def ping_ip(ip: str) -> bool:
     return result.returncode == 0
 
 
-def is_phone_online(ip_list: list[str]) -> bool:
-    """Returns True if at least one candidate IP responds to a ping."""
+def check_targets_status(ip_list: list[str]) -> list[dict[str, str | bool]]:
+    """Return one online status for every configured target IP."""
+    targets = []
     for ip in ip_list:
+        online = False
         for attempt in range(PING_RETRIES + 1):
             if ping_ip(ip):
-                return True
+                online = True
+                break
             if attempt < PING_RETRIES:
                 time.sleep(PING_RETRY_DELAY)
-    return False
+        targets.append({"ip": ip, "online": online})
+    return targets
+
+
+def send_mania_status(targets: list[dict[str, str | bool]]) -> bool:
+    try:
+        response = HTTP_SESSION.post(
+            MANIA_STATUS_API_URL,
+            json={"targets": targets},
+            timeout=MANIA_REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+    except requests.RequestException as err:
+        print(f"Error sending network status to manIA: {err}", flush=True)
+        return False
+
+    print(f"manIA accepted network status (HTTP {response.status_code}).", flush=True)
+    return True
 
 
 def format_duration(delta):
@@ -95,7 +120,9 @@ def main():
 
     while True:
         now = datetime.now()
-        online = is_phone_online(IP_TARGETS)
+        target_statuses = check_targets_status(IP_TARGETS)
+        send_mania_status(target_statuses)
+        online = any(target["online"] for target in target_statuses)
 
         if online:
             if first_seen is None:
@@ -127,7 +154,7 @@ def main():
             was_online = True
             last_seen = now
         else:
-            if was_online and last_seen is not None:
+            if not was_online and last_seen is not None:
                 duration = now - last_seen
 
                 if duration > NAP_THRESHOLD:
@@ -144,8 +171,7 @@ def main():
                     send_telegram(report)
                     last_reported_date = now.date()
                     first_seen = None
-
-                was_online = False
+            was_online = False
 
         time.sleep(CHECK_INTERVAL)
 

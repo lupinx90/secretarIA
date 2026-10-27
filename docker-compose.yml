@@ -10,5 +10,6 @@ services:
       - CHAT_ID=${CHAT_ID}
       - IP_TARGETS=${IP_TARGETS}
       - CHECK_INTERVAL=${CHECK_INTERVAL}
+      - MANIA_STATUS_API_URL=${MANIA_STATUS_API_URL}
     volumes:
       - ./data:/app/data  # Guarda la BD en la carpeta ./data de la Raspberry Pi
